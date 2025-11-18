@@ -10,9 +10,8 @@ function App() {
   const [prediction, setPrediction] = useState({ label: "Loading Model...", confidence: 0 });
   const [isAlerting, setIsAlerting] = useState(false);
 
-  // --- CONFIGURATION ---
-  const CONFIDENCE_THRESHOLD = 0.7; // 70% sure before alerting
-  const SKIP_FRAMES = 10; // Run AI every 10 frames (adjust for speed vs lag)
+  const CONFIDENCE_THRESHOLD = 0.7;
+  const SKIP_FRAMES = 10;
   
   const CLASS_NAMES = {
     0: 'DangerousDriving',
@@ -25,7 +24,6 @@ function App() {
 
   const DANGEROUS_CLASSES = ['DangerousDriving', 'Distracted', 'Drinking', 'SleepyDriving', 'Yawn'];
 
-  // --- SOUND ALARM (Browser Synthesizer) ---
   const playAlertSound = useCallback(() => {
     if (!isAlerting) return;
     
@@ -47,13 +45,11 @@ function App() {
     oscillator.stop(audioCtx.currentTime + 0.5);
   }, [isAlerting]);
 
-  // --- 1. LOAD MODEL ---
   useEffect(() => {
     const loadModel = async () => {
       try {
         const modelUrl = `${process.env.PUBLIC_URL}/model/model.json`;
         
-        // CHANGED: Use loadGraphModel instead of loadLayersModel
         const loadedModel = await tf.loadGraphModel(modelUrl);
         
         setModel(loadedModel);
@@ -67,12 +63,10 @@ function App() {
     loadModel();
   }, []);
 
-  // --- 2. DETECTION LOOP ---
   useEffect(() => {
     let frameCount = 0;
     let animationId;
     
-    // Initialize MediaPipe
     const faceDetection = new FaceDetection({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`,
     });
@@ -86,12 +80,10 @@ function App() {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
       
-      // Draw Video Frame
       ctx.save();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-      // Draw Face Box
       if (results.detections.length > 0) {
         const { xCenter, yCenter, width, height } = results.detections[0].boundingBox;
         const x = (xCenter - width / 2) * canvas.width;
@@ -99,11 +91,10 @@ function App() {
         const w = width * canvas.width;
         const h = height * canvas.height;
 
-        ctx.strokeStyle = "#00FF00"; // Green Box
+        ctx.strokeStyle = "#00FF00"; 
         ctx.lineWidth = 3;
         ctx.strokeRect(x, y, w, h);
       } else {
-        // Warning: Face not found
         ctx.fillStyle = "rgba(255, 255, 0, 0.5)";
         ctx.fillRect(0, 0, canvas.width, 50);
         ctx.fillStyle = "black";
@@ -117,12 +108,10 @@ function App() {
       if (webcamRef.current && webcamRef.current.video.readyState === 4 && model) {
         const video = webcamRef.current.video;
 
-        // A. Run MediaPipe (Fast, every frame)
         await faceDetection.send({ image: video });
 
-        // B. Run Driver Behavior Model (Slower, every 10 frames)
         if (frameCount % SKIP_FRAMES === 0) {
-          tf.tidy(() => { // Clean up memory automatically
+          tf.tidy(() => {
             const tfImg = tf.browser.fromPixels(video);
             const resized = tf.image.resizeBilinear(tfImg, [224, 224]);
             const normalized = resized.div(255.0).expandDims(0);
@@ -134,7 +123,6 @@ function App() {
 
             setPrediction({ label, confidence });
 
-            // Trigger Alert
             if (DANGEROUS_CLASSES.includes(label) && confidence > CONFIDENCE_THRESHOLD) {
                setIsAlerting(true);
             } else {
@@ -150,41 +138,32 @@ function App() {
     runDetection();
 
     return () => cancelAnimationFrame(animationId);
-  }, [model]); // Re-run if model loads
+  }, [model]);
 
-  // --- 3. AUDIO TRIGGER ---
   useEffect(() => {
     if (isAlerting) {
-        const interval = setInterval(playAlertSound, 1000); // Beep every second
+        const interval = setInterval(playAlertSound, 1000); 
         return () => clearInterval(interval);
     }
   }, [isAlerting, playAlertSound]);
 
-  // --- 4. RENDER UI ---
   return (
     <div style={styles.container}>
       <h1 style={styles.header}>Driver Behavior Monitor</h1>
       
       <div style={styles.camContainer}>
-        {/* Hidden Webcam */}
         <Webcam
           ref={webcamRef}
           style={{ position: "absolute", opacity: 0, width: 640, height: 480 }}
           videoConstraints={{ width: 640, height: 480, facingMode: "user" }}
         />
-        
-        {/* Visible Canvas (Draws Video + Boxes) */}
         <canvas ref={canvasRef} width={640} height={480} style={styles.canvas} />
-        
-        {/* Alert Overlay */}
         {isAlerting && (
             <div style={styles.alertOverlay}>
                 🚨 {prediction.label.toUpperCase()} 🚨
             </div>
         )}
       </div>
-
-      {/* Status Panel */}
       <div style={isAlerting ? styles.statusDanger : styles.statusSafe}>
         <h2>Status: {prediction.label}</h2>
         <p>Confidence: {(prediction.confidence * 100).toFixed(1)}%</p>
@@ -193,7 +172,6 @@ function App() {
   );
 }
 
-// Simple CSS Styles in JS
 const styles = {
   container: {
     display: "flex",
