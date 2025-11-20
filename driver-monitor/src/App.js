@@ -117,7 +117,7 @@ function App() {
             const maxIndex = predictions.indexOf(Math.max(...predictions));
             const label = CLASS_NAMES[maxIndex];
             const confidence = predictions[maxIndex];
-
+            //test
             setPrediction({ label, confidence });
 
             if (DANGEROUS_CLASSES.includes(label) && confidence > CONFIDENCE_THRESHOLD) {
