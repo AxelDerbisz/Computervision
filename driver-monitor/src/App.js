@@ -6,10 +6,6 @@ import { FaceDetection } from "@mediapipe/face_detection";
 function App() {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
-  
-  // --- NOUVEAU : Historique pour le lissage ---
-  const predictionHistory = useRef([]); 
-  
   const [model, setModel] = useState(null);
   const [prediction, setPrediction] = useState({ label: "Initialisation...", confidence: 0 });
   const [isAlerting, setIsAlerting] = useState(false);
@@ -17,11 +13,10 @@ function App() {
 
   // --- CONFIGURATION ---
   const CONFIDENCE_THRESHOLD = 0.7;
-  const SKIP_FRAMES = 5; // On analyse souvent (toutes les 5 frames)
-  const SMOOTHING_BUFFER_SIZE = 10; // On fait la moyenne sur les 10 dernières analyses
+  const SKIP_FRAMES = 10;
   
   const CLASS_NAMES = {
-    0: 'Dangerous Driving',
+    0: 'Dangerous Driving', // Texte un peu plus propre pour l'affichage
     1: 'Distracted',
     2: 'Drinking',
     3: 'Safe Driving',
@@ -31,14 +26,14 @@ function App() {
 
   const DANGEROUS_CLASSES = ['Dangerous Driving', 'Distracted', 'Drinking', 'Sleepy', 'Yawning'];
 
-  // --- AUDIO (Son Apple Doux) ---
+  // --- AUDIO ---
   const playAlertSound = useCallback(() => {
     if (!isAlerting) return;
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
 
-    oscillator.type = 'sine';
+    oscillator.type = 'sine'; // Son plus doux type "Apple Alert"
     oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
     oscillator.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.6);
     
@@ -61,7 +56,7 @@ function App() {
         setModel(loadedModel);
         setPrediction({ label: "Prêt", confidence: 0 });
         setIsLoading(false);
-        console.log("System Ready - Smoothing Enabled");
+        console.log("System Ready");
       } catch (err) {
         console.error("Load Error:", err);
         setPrediction({ label: "Erreur Modèle", confidence: 0 });
@@ -89,13 +84,15 @@ function App() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
 
-      // Dessin Cadre Visage
+      // Dessin du cadre visage style "Focus iOS"
       if (results.detections.length > 0) {
         const { xCenter, yCenter, width, height } = results.detections[0].boundingBox;
         const x = (xCenter - width / 2) * canvas.width;
         const y = (yCenter - height / 2) * canvas.height;
         const w = width * canvas.width;
         const h = height * canvas.height;
+
+        // Coins arrondis pour le cadre
         const radius = 15;
         ctx.beginPath();
         ctx.lineWidth = 2;
@@ -112,47 +109,17 @@ function App() {
 
         if (frameCount % SKIP_FRAMES === 0) {
           tf.tidy(() => {
-            // 1. Préparation Image
             const tfImg = tf.browser.fromPixels(video);
             const resized = tf.image.resizeBilinear(tfImg, [224, 224]);
             const normalized = resized.div(255.0).expandDims(0);
             
-            // 2. Prédiction Brute (Instantanée)
-            const currentLogits = model.predict(normalized).dataSync(); // Float32Array des probas
-
-            // --- ALGORITHME DE LISSAGE (SMOOTHING) ---
-            
-            // A. Ajouter au buffer
-            predictionHistory.current.push(currentLogits);
-            
-            // B. Garder seulement les N dernières prédictions
-            if (predictionHistory.current.length > SMOOTHING_BUFFER_SIZE) {
-                predictionHistory.current.shift();
-            }
-
-            // C. Calculer la moyenne de chaque classe sur l'historique
-            const numClasses = Object.keys(CLASS_NAMES).length;
-            const averagedLogits = new Float32Array(numClasses).fill(0);
-
-            for (let entry of predictionHistory.current) {
-                for (let i = 0; i < numClasses; i++) {
-                    averagedLogits[i] += entry[i];
-                }
-            }
-            
-            // Diviser par la taille de l'historique pour avoir la moyenne
-            for (let i = 0; i < numClasses; i++) {
-                averagedLogits[i] /= predictionHistory.current.length;
-            }
-
-            // 3. Décision finale basée sur la MOYENNE
-            const maxIndex = averagedLogits.indexOf(Math.max(...averagedLogits));
+            const predictions = model.predict(normalized).dataSync();
+            const maxIndex = predictions.indexOf(Math.max(...predictions));
             const label = CLASS_NAMES[maxIndex];
-            const confidence = averagedLogits[maxIndex];
+            const confidence = predictions[maxIndex];
 
             setPrediction({ label, confidence });
 
-            // 4. Déclenchement Alerte
             if (DANGEROUS_CLASSES.includes(label) && confidence > CONFIDENCE_THRESHOLD) {
                setIsAlerting(true);
             } else {
@@ -177,9 +144,10 @@ function App() {
     }
   }, [isAlerting, playAlertSound]);
 
-  // --- RENDER (Style Apple) ---
+  // --- RENDER ---
   return (
     <div style={styles.pageContainer}>
+      {/* Ajout de styles globaux pour l'animation Pulse */}
       <style>
         {`
           @keyframes pulse-red {
@@ -195,11 +163,13 @@ function App() {
       </style>
 
       <div style={styles.mainCard}>
+        {/* Header Flottant */}
         <div style={styles.header}>
           <div style={styles.headerIcon}>🚗</div>
           <h1 style={styles.title}>Driver<span style={{fontWeight: 400, opacity: 0.7}}>Guard</span></h1>
         </div>
 
+        {/* Zone Vidéo */}
         <div style={{
             ...styles.videoWrapper,
             ...(isAlerting ? styles.videoWrapperAlert : {})
@@ -209,10 +179,10 @@ function App() {
             style={styles.webcam}
             videoConstraints={{ width: 640, height: 480, facingMode: "user" }}
             muted
-            playsInline
           />
           <canvas ref={canvasRef} width={640} height={480} style={styles.canvas} />
           
+          {/* Overlay Alert (Glassmorphism) */}
           {isAlerting && (
              <div style={styles.alertGlass}>
                 <span style={{fontSize: '3rem'}}>⚠️</span>
@@ -225,20 +195,21 @@ function App() {
           )}
         </div>
 
+        {/* Dynamic Status Bar (Control Center Style) */}
         <div style={styles.dashboard}>
           <div style={styles.statusRow}>
             <div style={styles.labelGroup}>
-              <span style={styles.subLabel}>ÉTAT LISSÉ</span>
+              <span style={styles.subLabel}>ÉTAT ACTUEL</span>
               <span style={{
                   ...styles.mainLabel,
-                  color: isAlerting ? '#FF3B30' : '#34C759'
+                  color: isAlerting ? '#FF3B30' : '#34C759' // Apple Red / Apple Green
               }}>
                 {prediction.label}
               </span>
             </div>
             
             <div style={styles.confidenceGroup}>
-              <span style={styles.subLabel}>STABILITÉ</span>
+              <span style={styles.subLabel}>FIABILITÉ</span>
               <div style={styles.progressBarBg}>
                 <div style={{
                     ...styles.progressBarFill,
@@ -256,12 +227,12 @@ function App() {
   );
 }
 
-// --- STYLES ---
+// --- STYLES (CSS-in-JS) ---
 const styles = {
   pageContainer: {
     minHeight: "100vh",
     backgroundColor: "#000000",
-    backgroundImage: "radial-gradient(circle at 50% 0%, #2c2c2e 0%, #000000 100%)",
+    backgroundImage: "radial-gradient(circle at 50% 0%, #2c2c2e 0%, #000000 100%)", // Fond sombre iOS
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
@@ -304,7 +275,7 @@ const styles = {
   },
   videoWrapper: {
     position: "relative",
-    borderRadius: "28px",
+    borderRadius: "28px", // Coins très arrondis (style iPhone)
     overflow: "hidden",
     boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
     border: "1px solid rgba(255,255,255,0.1)",
@@ -323,47 +294,97 @@ const styles = {
     display: "block"
   },
   canvas: {
-    position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover"
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "cover"
   },
   alertGlass: {
-    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-    background: "rgba(50, 0, 0, 0.4)", backdropFilter: "blur(8px)", zIndex: 10, gap: "10px"
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(50, 0, 0, 0.4)", // Rouge très sombre transparent
+    backdropFilter: "blur(8px)", // Effet verre dépoli
+    zIndex: 10,
+    gap: "10px"
   },
   alertText: {
-    fontSize: "24px", fontWeight: "700", color: "#FFFFFF", textShadow: "0 2px 10px rgba(0,0,0,0.5)", letterSpacing: "1px"
+    fontSize: "24px",
+    fontWeight: "700",
+    color: "#FFFFFF",
+    textShadow: "0 2px 10px rgba(0,0,0,0.5)",
+    letterSpacing: "1px"
   },
   loadingOverlay: {
-    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-    display: "flex", alignItems: "center", justifyContent: "center", background: "#1c1c1e", zIndex: 20, color: "#8e8e93"
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#1c1c1e",
+    zIndex: 20,
+    color: "#8e8e93"
   },
   dashboard: {
-    background: "rgba(28, 28, 30, 0.6)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-    borderRadius: "24px", padding: "20px 24px", border: "1px solid rgba(255, 255, 255, 0.08)", boxShadow: "0 8px 32px rgba(0, 0, 0, 0.2)"
+    background: "rgba(28, 28, 30, 0.6)", // Gris iOS semi-transparent
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)", // Pour Safari
+    borderRadius: "24px",
+    padding: "20px 24px",
+    border: "1px solid rgba(255, 255, 255, 0.08)",
+    boxShadow: "0 8px 32px rgba(0, 0, 0, 0.2)"
   },
   statusRow: {
-    display: "flex", justifyContent: "space-between", alignItems: "center"
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
   },
   labelGroup: {
-    display: "flex", flexDirection: "column", gap: "4px"
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px"
   },
   subLabel: {
-    fontSize: "11px", textTransform: "uppercase", color: "#8e8e93", fontWeight: "600", letterSpacing: "0.5px"
+    fontSize: "11px",
+    textTransform: "uppercase",
+    color: "#8e8e93", // Gris texte Apple standard
+    fontWeight: "600",
+    letterSpacing: "0.5px"
   },
   mainLabel: {
-    fontSize: "20px", fontWeight: "600", letterSpacing: "-0.5px", transition: "color 0.3s ease"
+    fontSize: "20px",
+    fontWeight: "600",
+    letterSpacing: "-0.5px",
+    transition: "color 0.3s ease"
   },
   confidenceGroup: {
-    display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", width: "40%"
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: "6px",
+    width: "40%"
   },
   progressBarBg: {
-    width: "100%", height: "6px", background: "rgba(255,255,255,0.1)", borderRadius: "10px", overflow: "hidden"
+    width: "100%",
+    height: "6px",
+    background: "rgba(255,255,255,0.1)",
+    borderRadius: "10px",
+    overflow: "hidden"
   },
   progressBarFill: {
-    height: "100%", borderRadius: "10px", transition: "width 0.3s ease, background-color 0.3s ease"
+    height: "100%",
+    borderRadius: "10px",
+    transition: "width 0.3s ease, background-color 0.3s ease"
   },
   confidenceValue: {
-    fontSize: "12px", color: "#8e8e93", fontVariantNumeric: "tabular-nums"
+    fontSize: "12px",
+    color: "#8e8e93",
+    fontVariantNumeric: "tabular-nums"
   }
 };
 
